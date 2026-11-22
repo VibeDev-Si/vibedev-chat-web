@@ -14,13 +14,15 @@ VibeDev 聊天的网页版（也就是 VibeDev 桌面版里内嵌的聊天）就
 | 文件 | 作用 | sha256 |
 |---|---|---|
 | [compat/vibedev-webrtc-compat-v1.js](compat/vibedev-webrtc-compat-v1.js) | Windows 上 Chromium 156 及以上版本的屏幕共享编码协商修正 | `0caca468396deb32f29ca375749c0a8f1534a5af529280e7f68b2ab1128da6a0` |
-| [compat/vibedev-desktop-compat-v1.js](compat/vibedev-desktop-compat-v1.js) | 桌面版里不显示「开启桌面通知」提示 | `2084dee1fc61a0800a544a565bea1461c0b554dab36d2b9ce5326a4fcd0e7932` |
+| [compat/vibedev-desktop-compat-v2.js](compat/vibedev-desktop-compat-v2.js) | 不支持通知的旧版桌面里不显示「开启桌面通知」提示（2026-11-23 起） | `b508018f8e5fdee23048a9ca3e5b42b77ef8e4337af7f226c60325e36f941ae8` |
+| [compat/vibedev-desktop-compat-v1.js](compat/vibedev-desktop-compat-v1.js) | v1：在所有桌面版里都不显示这条提示。已由 v2 取代，线上仍原样提供，给还引用它的页面用 | `2084dee1fc61a0800a544a565bea1461c0b554dab36d2b9ce5326a4fcd0e7932` |
 | [nginx/element-inject.conf.example](nginx/element-inject.conf.example) | 注入方式（nginx 配置示例，大写的是占位符） | — |
 
-线上提供的两个脚本和本仓库里的文件逐字节相同，可以自己核对，例如：
+线上提供的脚本和本仓库里的文件逐字节相同，可以自己核对，例如：
 
 ```sh
 curl -s https://chat.vibedev.studio/vibedev-webrtc-compat-v1.js | sha256sum
+curl -s https://chat.vibedev.studio/vibedev-desktop-compat-v2.js | sha256sum
 curl -s https://chat.vibedev.studio/vibedev-desktop-compat-v1.js | sha256sum
 ```
 
@@ -33,20 +35,21 @@ curl -s https://chat.vibedev.studio/vibedev-desktop-compat-v1.js | sha256sum
 - **做法**：只处理视频收发器上的这个调用。保留 Element 选好的顺序，去掉接收端不支持的编码和重复项，再交给浏览器原生的 `setCodecPreferences`；其他调用原样转交。
 - **什么时候删**：上游修好以后，去掉注入即可。
 
-### vibedev-desktop-compat-v1.js：桌面版的通知提示
+### vibedev-desktop-compat-v2.js：旧版桌面的通知提示
 
-- **只在哪里生效**：只在桌面版里（user agent 含 `Electron/`）。浏览器里打开时，这个脚本什么都不做。
+- **只在哪里生效**：只在**还不支持通知的**桌面版里，也就是 user agent 含 `Electron/`、但不含 `VibeDevMessages/`。支持通知的新版桌面会在 user agent 里加上 `VibeDevMessages/`，照常显示 Element 的提示。浏览器里打开时，这个脚本什么都不做。
 - **问题**：VibeDev 桌面版暂时还不能显示系统通知，因为桌面版拒绝了这项权限。所以 Element 的「开启桌面通知」提示，点了只会出错。
 - **做法**：Element 读取 `localStorage` 里的 `notifications_hidden` 时，如果还没有存过值，就返回 `"true"`，于是不显示这条提示；已经存过的值原样返回。
 - **影响范围**：脚本不写入任何东西。推送规则、未读计数和通知设置都不受影响。
-- **什么时候删**：桌面版支持通知以后，或者到时只对旧版桌面生效。
+- **为什么是新文件**：v1 在所有桌面版里都隐藏这条提示。它按版本号命名、缓存一年，改它的内容，已经缓存过的桌面和浏览器拿不到新内容，所以按版本规则发了 v2，页面改为引用 v2。
+- **什么时候删**：旧版桌面不再有人用以后，去掉注入即可。
 
 ## 注入方式
 
 见 [nginx/element-inject.conf.example](nginx/element-inject.conf.example)：
 
-- **放在哪里**：两个脚本作为静态文件，放在和 Element 同一个域名下。文件名带版本号（`-v1`），内容一变就换新文件名，所以可以长期缓存。
-- **怎么插入**：nginx 用 `sub_filter` 在 Element 页面的 `<head>` 后面插入两个 `<script defer src="…">`。另外插入的一个 `preconnect` 和这两个脚本无关，只是让浏览器提前和 homeserver 建立连接。
+- **放在哪里**：两个脚本作为静态文件，放在和 Element 同一个域名下。文件名带版本号（`-v1`、`-v2`），内容一变就换新文件名，所以可以长期缓存。
+- **怎么插入**：nginx 用 `sub_filter` 在 Element 页面的 `<head>` 后面插入两个 `<script defer src="…">`（网页版通话页面 `/widgets/element-call/` 也是 Element 自带的 HTML 页面，同样会被插入）。另外插入的一个 `preconnect` 和这两个脚本无关，只是让浏览器提前和 homeserver 建立连接。
 - **前提**：因为要改写页面，nginx 要求 Element 容器返回未压缩的内容（`proxy_set_header Accept-Encoding ""`），压缩由 nginx 自己做。
 
 Element 的配置（`config.json`：品牌、默认服务器、登录方式等）和自定义翻译（`custom_translations_url`）都通过 Element 自带的配置项设置，属于配置，不在本仓库。
