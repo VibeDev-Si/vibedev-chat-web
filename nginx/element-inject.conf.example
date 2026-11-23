@@ -28,6 +28,22 @@ server {
         try_files $uri =404;
     }
 
+    # The call page: the upstream package @element-hq/element-call-embedded@0.29.0-rc.2 (unmodified; its files unpacked
+    # to /PATH/TO/element-call/0.29.0-rc.2/) instead of the Element Call 0.28.2 bundled with Element 1.12.35. Element
+    # Call's own config.json keeps an exact location of its own.
+    location = /widgets/element-call/config.json {
+        alias /PATH/TO/element-call-config.json;
+        default_type application/json;
+    }
+    rewrite "^/widgets/element-call/(?!config\.json$)(.*)$" /__element_call/0.29.0-rc.2/$1 last;
+    location ^~ /__element_call/ {
+        internal;
+        alias /PATH/TO/element-call/;
+        index index.html;
+        sub_filter_once on;
+        sub_filter '<head>' '<head><script defer src="/vibedev-webrtc-compat-v1.js"></script><script defer src="/vibedev-desktop-compat-v2.js"></script>';
+    }
+
     # Everything else is Element Web. The only change to its pages: two <script defer> tags right after <head>
     # (sub_filter only rewrites text/html: index.html and the bundled Element Call page /widgets/element-call/). The preconnect hint is unrelated to the scripts: Element's
     # cross-origin calls to the homeserver cannot reuse the page's connection, so one is opened early.

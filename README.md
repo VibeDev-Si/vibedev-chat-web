@@ -7,7 +7,7 @@ VibeDev 聊天的网页版（也就是 VibeDev 桌面版里内嵌的聊天）就
 
 唯一的代码改动在反向代理（nginx）上：它往 Element 的页面里注入了两个兼容脚本。本仓库公开这两个脚本和注入方式，许可证与 Element 一致（AGPL-3.0）。
 
-*English: VibeDev Chat is Element Web 1.12.35, unmodified (official image), plus two compatibility scripts that the reverse proxy injects into Element's page. This repository holds those scripts and how they are injected, under the AGPL-3.0 like Element.*
+*English: VibeDev Chat is Element Web 1.12.35, unmodified (official image), plus two compatibility scripts that the reverse proxy injects into Element's page. This repository holds those scripts and how they are injected, under the AGPL-3.0 like Element. Since 2026-11-23 the call page `/widgets/element-call/` is the upstream Element Call embedded package 0.29.0-rc.2, unmodified, served by the reverse proxy instead of the 0.28.2 bundled with Element 1.12.35 (see below).*
 
 ## 文件
 
@@ -49,10 +49,19 @@ curl -s https://chat.vibedev.studio/vibedev-desktop-compat-v1.js | sha256sum
 见 [nginx/element-inject.conf.example](nginx/element-inject.conf.example)：
 
 - **放在哪里**：两个脚本作为静态文件，放在和 Element 同一个域名下。文件名带版本号（`-v1`、`-v2`），内容一变就换新文件名，所以可以长期缓存。
-- **怎么插入**：nginx 用 `sub_filter` 在 Element 页面的 `<head>` 后面插入两个 `<script defer src="…">`（网页版通话页面 `/widgets/element-call/` 也是 Element 自带的 HTML 页面，同样会被插入）。另外插入的一个 `preconnect` 和这两个脚本无关，只是让浏览器提前和 homeserver 建立连接。
+- **怎么插入**：nginx 用 `sub_filter` 在 Element 页面的 `<head>` 后面插入两个 `<script defer src="…">`（通话页面 `/widgets/element-call/` 也一样会被插入，见下一节）。另外插入的一个 `preconnect` 和这两个脚本无关，只是让浏览器提前和 homeserver 建立连接。
 - **前提**：因为要改写页面，nginx 要求 Element 容器返回未压缩的内容（`proxy_set_header Accept-Encoding ""`），压缩由 nginx 自己做。
 
 Element 的配置（`config.json`：品牌、默认服务器、登录方式等）和自定义翻译（`custom_translations_url`）都通过 Element 自带的配置项设置，属于配置，不在本仓库。
+
+## 通话页面：Element Call 0.29.0-rc.2（2026-11-23 起）
+
+- **是什么**：Element 里的通话（一对一和群通话）由 Element Call 页面 `/widgets/element-call/` 完成。我们没有用 Element 1.12.35 自带的 Element Call 0.28.2，而是由 nginx 在这个路径提供上游的 `@element-hq/element-call-embedded@0.29.0-rc.2`，**原样使用，没有任何修改**。
+- **为什么**：0.28.2 有一个缺陷：设备（麦克风、摄像头）比通话界面晚一点就绪时，开关显示为开，但不会发布，对方看不到也听不到（[element-call#4403](https://github.com/element-hq/element-call/issues/4403)）。私聊通话不经过等候页，最容易中。修复是 [element-call#4485](https://github.com/element-hq/element-call/pull/4485)，0.29.0-rc.2 里是它的 backport [#4487](https://github.com/element-hq/element-call/pull/4487)。
+- **源码**：[element-hq/element-call v0.29.0-rc.2](https://github.com/element-hq/element-call/tree/v0.29.0-rc.2)。许可证是 AGPL-3.0-only（或 Element 的商业许可）。
+- **核对**：npm 包的 integrity 是 `sha512-nRKZBXQ0ntqkgNoCSkTo14ygDg/WlegPUOmZTzgbpCzNSVwrw7vGkWUhcj5uBoArhYZRhHgvctLy1PXDFwy57g==`。包里的 160 个文件和上游发布附件 `element-call-embedded-0.29.0-rc.2.tar.gz` 逐字节相同，与上游的 sha256 清单一致。
+- **怎么提供**：见 [nginx/element-inject.conf.example](nginx/element-inject.conf.example) 末尾。和 Element 的页面一样会被注入上面两个脚本。Element Call 的 `config.json`（延迟离开时长等）是配置，不在本仓库。
+- **什么时候撤**：Element Web 自带的 Element Call 也包含这个修复以后，去掉这段 nginx 配置，回到 Element 自带的版本。
 
 ## 许可证
 
@@ -61,4 +70,4 @@ Element 的配置（`config.json`：品牌、默认服务器、登录方式等�
 ## 相关的开源代码
 
 - **机器人插件**：VibeDev 聊天里机器人用的插件中，改过的那些，源码在 [VibeDev-Si/vibedev-bot-plugins](https://github.com/VibeDev-Si/vibedev-bot-plugins)。
-- **其他组件**：homeserver 等其他组件都是上游原版，没有修改。
+- **其他组件**：homeserver、Element Call 等其他组件都是上游原版，没有修改。
