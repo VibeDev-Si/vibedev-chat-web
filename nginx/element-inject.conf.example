@@ -1,4 +1,4 @@
-# How VibeDev Chat serves Element Web 1.12.35 with the two compatibility scripts of this repository (nginx).
+# How VibeDev Chat serves Element Web 1.12.35 with the scripts of this repository (nginx).
 # Example only: names in CAPITALS are placeholders. Element itself runs unchanged (official image
 # vectorim/element-web:v1.12.35) behind this proxy; TLS, caching, compression and other headers are left out here.
 
@@ -27,6 +27,14 @@ server {
         expires 1y;
         try_files $uri =404;
     }
+    # Home page script (2026-11-24): hides the home page's name/avatar card once the profile is complete. Element's
+    # pages only; the call page below does not get it.
+    location = /vibedev-home-v1.js {
+        root /PATH/TO/vibedev-chat-web/compat;
+        default_type application/javascript;
+        expires 1y;
+        try_files $uri =404;
+    }
 
     # The call page: the upstream package @element-hq/element-call-embedded@0.29.0-rc.2 (unmodified; its files unpacked
     # to /PATH/TO/element-call/0.29.0-rc.2/) instead of the Element Call 0.28.2 bundled with Element 1.12.35. Element
@@ -44,12 +52,13 @@ server {
         sub_filter '<head>' '<head><script defer src="/vibedev-webrtc-compat-v1.js"></script><script defer src="/vibedev-desktop-compat-v2.js"></script>';
     }
 
-    # Everything else is Element Web. The only change to its pages: two <script defer> tags right after <head>
+    # Everything else is Element Web. The only change to its pages: <script defer> tags right after <head>
     # (sub_filter only rewrites text/html: index.html and the bundled Element Call page /widgets/element-call/). The preconnect hint is unrelated to the scripts: Element's
     # cross-origin calls to the homeserver cannot reuse the page's connection, so one is opened early.
+    # 2026-11-24: vibedev-home-v1.js added after the two compatibility scripts.
     location / {
         sub_filter_once on;
-        sub_filter '<head>' '<head><link rel="preconnect" href="https://HOMESERVER_HOST" crossorigin><script defer src="/vibedev-webrtc-compat-v1.js"></script><script defer src="/vibedev-desktop-compat-v2.js"></script>';
+        sub_filter '<head>' '<head><link rel="preconnect" href="https://HOMESERVER_HOST" crossorigin><script defer src="/vibedev-webrtc-compat-v1.js"></script><script defer src="/vibedev-desktop-compat-v2.js"></script><script defer src="/vibedev-home-v1.js"></script>';
         proxy_set_header Accept-Encoding "";        # sub_filter needs an uncompressed answer from Element
         proxy_pass http://ELEMENT_UPSTREAM;         # the Element Web container
         proxy_http_version 1.1;
